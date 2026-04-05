@@ -15,7 +15,6 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from huggingface_hub import hf_hub_download
 
 # ── App Setup ────────────────────────────────────────────────
 app = FastAPI(
@@ -33,10 +32,6 @@ app.add_middleware(
 
 # ── Config ───────────────────────────────────────────────────
 DEVICE   = torch.device("cpu")   # HF Spaces free CPU only
-REPO_ID  = "nilotpaldhar2004/intent-chatbot-lstm"
-CACHE    = "/tmp/chatbot_cache"
-os.makedirs(CACHE, exist_ok=True)
-
 CONFIDENCE_THRESHOLD = 0.30
 
 # ── Model Definition (must match training exactly) ───────────
@@ -132,23 +127,19 @@ def predict(text: str):
     return intent, confidence, all_probs
 
 
-# ── Startup — Load All Artifacts ─────────────────────────────
+# ── Startup — Load All Artifacts LOCALLY ─────────────────────
 @app.on_event("startup")
 async def load_artifacts():
     global model, vocab, labels_data
 
-    print("Loading artifacts from HuggingFace Hub...")
-
-    model_path  = hf_hub_download(REPO_ID, "model.pt",    cache_dir=CACHE)
-    vocab_path  = hf_hub_download(REPO_ID, "vocab.pkl",   cache_dir=CACHE)
-    labels_path = hf_hub_download(REPO_ID, "labels.pkl",  cache_dir=CACHE)
+    print("Loading artifacts locally from Docker container...")
 
     # Load vocab
-    with open(vocab_path, "rb") as f:
+    with open("vocab.pkl", "rb") as f:
         vocab = pickle.load(f)
 
     # Load labels
-    with open(labels_path, "rb") as f:
+    with open("labels.pkl", "rb") as f:
         labels_data = pickle.load(f)
 
     # Fix idx2intent keys → must be strings for JSON compat
@@ -157,7 +148,7 @@ async def load_artifacts():
     }
 
     # Load model
-    checkpoint = torch.load(model_path, map_location=DEVICE)
+    checkpoint = torch.load("model.pt", map_location=DEVICE)
     cfg        = checkpoint["model_config"]
 
     model = LSTMIntentClassifier(
