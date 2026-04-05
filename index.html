@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LSTM Chatbot — Nilotpal Dhar</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ── Reset ─────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ── Variables ──────────────────────────── */
+  :root {
+    --bg:        #0a0a0f;
+    --surface:   #111118;
+    --border:    #1e1e2e;
+    --accent:    #7c6aff;
+    --accent2:   #ff6a9b;
+    --accent3:   #6affda;
+    --text:      #e8e8f0;
+    --muted:     #6b6b80;
+    --user-bg:   #7c6aff;
+    --bot-bg:    #16161f;
+    --radius:    16px;
+    --font-main: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  /* ── Body ───────────────────────────────── */
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-main);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+  }
+
+  /* ── Background grid ────────────────────── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Glow orbs ──────────────────────────── */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.12;
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 8s ease-in-out infinite alternate;
+  }
+  .orb-1 { width: 400px; height: 400px; background: var(--accent);  top: -100px; left: -100px; }
+  .orb-2 { width: 300px; height: 300px; background: var(--accent2); bottom: -80px; right: -80px; animation-delay: -4s; }
+  .orb-3 { width: 200px; height: 200px; background: var(--accent3); top: 50%; left: 50%; animation-delay: -2s; }
+
+  @keyframes drift {
+    from { transform: translate(0, 0) scale(1); }
+    to   { transform: translate(30px, 20px) scale(1.1); }
+  }
+
+  /* ── Wrapper ────────────────────────────── */
+  .wrapper {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 760px;
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* ── Header ─────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    background: rgba(17,17,24,0.8);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    backdrop-filter: blur(20px);
+    margin-bottom: 16px;
+    animation: slideDown 0.6s ease;
+  }
+
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .header-left { display: flex; align-items: center; gap: 14px; }
+
+  .avatar {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+    animation: pulse 3s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(124,106,255,0.4); }
+    50%       { box-shadow: 0 0 0 8px rgba(124,106,255,0); }
+  }
+
+  .header-info h1 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: var(--text);
+  }
+  .header-info p {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    margin-top: 2px;
+  }
+
+  .status {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-family: var(--font-mono);
+    color: var(--accent3);
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent3);
+    animation: blink 2s ease-in-out infinite;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+  .status.offline { color: var(--muted); }
+  .status.offline .status-dot { background: var(--muted); animation: none; }
+
+  /* ── Stats bar ──────────────────────────── */
+  .stats {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    animation: slideDown 0.6s ease 0.1s both;
+  }
+  .stat {
+    flex: 1;
+    padding: 12px 16px;
+    background: rgba(17,17,24,0.7);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    text-align: center;
+  }
+  .stat-val {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--accent);
+    font-family: var(--font-mono);
+  }
+  .stat-val.green { color: var(--accent3); }
+  .stat-val.pink  { color: var(--accent2); }
+  .stat-label {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  /* ── Chat window ────────────────────────── */
+  .chat-window {
+    flex: 1;
+    background: rgba(17,17,24,0.7);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    backdrop-filter: blur(20px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideDown 0.6s ease 0.2s both;
+    min-height: 420px;
+  }
+
+  /* ── Messages area ──────────────────────── */
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scroll-behavior: smooth;
+  }
+  #messages::-webkit-scrollbar { width: 4px; }
+  #messages::-webkit-scrollbar-track { background: transparent; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* ── Message bubble ─────────────────────── */
+  .msg {
+    display: flex;
+    gap: 10px;
+    animation: msgIn 0.3s ease;
+    max-width: 85%;
+  }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.user { flex-direction: row-reverse; align-self: flex-end; }
+  .msg.bot  { align-self: flex-start; }
+
+  .msg-icon {
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .msg.user .msg-icon { background: var(--user-bg); }
+  .msg.bot  .msg-icon { background: var(--surface); border: 1px solid var(--border); }
+
+  .msg-content { display: flex; flex-direction: column; gap: 4px; }
+
+  .msg-bubble {
+    padding: 12px 16px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.6;
+    font-family: var(--font-mono);
+  }
+  .msg.user .msg-bubble {
+    background: var(--user-bg);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .msg.bot .msg-bubble {
+    background: var(--bot-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg-meta {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; font-family: var(--font-mono);
+    color: var(--muted);
+  }
+  .msg.user .msg-meta { justify-content: flex-end; }
+
+  .intent-tag {
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: rgba(124,106,255,0.15);
+    color: var(--accent);
+    border: 1px solid rgba(124,106,255,0.3);
+    font-size: 10px;
+    font-family: var(--font-mono);
+  }
+  .conf-tag {
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: rgba(106,255,218,0.1);
+    color: var(--accent3);
+    border: 1px solid rgba(106,255,218,0.2);
+    font-size: 10px;
+    font-family: var(--font-mono);
+  }
+
+  /* ── Welcome message ────────────────────── */
+  .welcome {
+    text-align: center;
+    padding: 40px 20px;
+    animation: fadeIn 0.8s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .welcome-emoji { font-size: 48px; margin-bottom: 16px; }
+  .welcome h2 {
+    font-size: 22px; font-weight: 800;
+    margin-bottom: 8px; color: var(--text);
+  }
+  .welcome p {
+    font-size: 13px; color: var(--muted);
+    font-family: var(--font-mono); line-height: 1.6;
+    max-width: 380px; margin: 0 auto 24px;
+  }
+
+  /* ── Suggestions ────────────────────────── */
+  .suggestions {
+    display: flex; flex-wrap: wrap;
+    gap: 8px; justify-content: center;
+    margin-top: 8px;
+  }
+  .suggestion {
+    padding: 8px 14px;
+    background: rgba(124,106,255,0.08);
+    border: 1px solid rgba(124,106,255,0.2);
+    border-radius: 20px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--accent);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .suggestion:hover {
+    background: rgba(124,106,255,0.2);
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+
+  /* ── Typing indicator ───────────────────── */
+  .typing {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 4px;
+  }
+  .typing-dots {
+    display: flex; gap: 4px;
+    padding: 12px 16px;
+    background: var(--bot-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    border-bottom-left-radius: 4px;
+  }
+  .typing-dots span {
+    width: 6px; height: 6px;
+    background: var(--muted);
+    border-radius: 50%;
+    animation: bounce 1.2s ease infinite;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30%            { transform: translateY(-6px); }
+  }
+
+  /* ── Input area ─────────────────────────── */
+  .input-area {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  #input {
+    flex: 1;
+    background: rgba(10,10,15,0.8);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    resize: none;
+    height: 46px;
+    line-height: 22px;
+  }
+  #input:focus { border-color: var(--accent); }
+  #input::placeholder { color: var(--muted); }
+
+  #send-btn {
+    width: 46px; height: 46px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; border-radius: 12px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  #send-btn:hover:not(:disabled) {
+    transform: scale(1.05);
+    box-shadow: 0 4px 20px rgba(124,106,255,0.4);
+  }
+  #send-btn:disabled {
+    opacity: 0.4; cursor: not-allowed; transform: none;
+  }
+
+  /* ── Error banner ───────────────────────── */
+  .error-banner {
+    padding: 12px 16px;
+    background: rgba(255,100,100,0.1);
+    border: 1px solid rgba(255,100,100,0.3);
+    border-radius: 10px;
+    color: #ff8080;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    margin: 8px 20px;
+    display: none;
+  }
+  .error-banner.show { display: block; }
+
+  /* ── Footer ─────────────────────────────── */
+  footer {
+    text-align: center;
+    padding: 16px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    animation: slideDown 0.6s ease 0.4s both;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  /* ── Responsive ─────────────────────────── */
+  @media (max-width: 480px) {
+    .stats { display: none; }
+    .wrapper { padding: 12px 8px; }
+    header { padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<div class="wrapper">
+
+  <!-- Header -->
+  <header>
+    <div class="header-left">
+      <div class="avatar">🧠</div>
+      <div class="header-info">
+        <h1>LSTM Chatbot</h1>
+        <p>intent classifier · 18 classes · 76.9% accuracy</p>
+      </div>
+    </div>
+    <div class="status offline" id="status-indicator">
+      <div class="status-dot"></div>
+      <span id="status-text">connecting...</span>
+    </div>
+  </header>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-val">76.9%</div>
+      <div class="stat-label">Val Accuracy</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val green">18</div>
+      <div class="stat-label">Intent Classes</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val pink">800</div>
+      <div class="stat-label">Training Samples</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="msg-count">0</div>
+      <div class="stat-label">Messages Sent</div>
+    </div>
+  </div>
+
+  <!-- Chat Window -->
+  <div class="chat-window">
+
+    <div id="messages">
+      <!-- Welcome -->
+      <div class="welcome" id="welcome">
+        <div class="welcome-emoji">🤖</div>
+        <h2>Hey, I'm LSTM Bot</h2>
+        <p>Built with a Bidirectional LSTM trained on ChatterBot Corpus. Ask me anything — I'll classify your intent and respond.</p>
+        <div class="suggestions">
+          <span class="suggestion" onclick="fillInput(this)">Hello there</span>
+          <span class="suggestion" onclick="fillInput(this)">Tell me a joke</span>
+          <span class="suggestion" onclick="fillInput(this)">What is AI?</span>
+          <span class="suggestion" onclick="fillInput(this)">I feel sad today</span>
+          <span class="suggestion" onclick="fillInput(this)">How does money work?</span>
+          <span class="suggestion" onclick="fillInput(this)">Tell me about science</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-banner" id="error-banner">
+      ⚠️ Backend is waking up (HF Spaces sleeps after 48h). Please wait ~30 seconds and try again.
+    </div>
+
+    <!-- Input -->
+    <div class="input-area">
+      <input
+        type="text"
+        id="input"
+        placeholder="Type a message..."
+        autocomplete="off"
+        onkeydown="if(event.key==='Enter') sendMessage()"
+      />
+      <button id="send-btn" onclick="sendMessage()">➤</button>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    Built by <a href="https://github.com/nilotpaldhar2004" target="_blank">Nilotpal Dhar</a>
+    · Powered by PyTorch LSTM
+    · <a href="https://huggingface.co/nilotpaldhar2004" target="_blank">HuggingFace</a>
+    · <a href="https://github.com/nilotpaldhar2004" target="_blank">GitHub</a>
+  </footer>
+
+</div>
+
+<script>
+  // ── Config ───────────────────────────────────────────────
+  const API_BASE = 'https://nilotpaldhar2004-intent-chatbot-lstm.hf.space';
+  let msgCount   = 0;
+  let isLoading  = false;
+
+  // ── Check API health on load ─────────────────────────────
+  async function checkHealth() {
+    try {
+      const res = await fetch(`${API_BASE}/ping`, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        setStatus('online');
+      } else {
+        setStatus('offline');
+      }
+    } catch {
+      setStatus('offline');
+    }
+  }
+
+  function setStatus(state) {
+    const ind  = document.getElementById('status-indicator');
+    const text = document.getElementById('status-text');
+    if (state === 'online') {
+      ind.className  = 'status';
+      text.textContent = 'online';
+    } else {
+      ind.className  = 'status offline';
+      text.textContent = 'offline';
+    }
+  }
+
+  // ── Fill input from suggestion ────────────────────────────
+  function fillInput(el) {
+    document.getElementById('input').value = el.textContent;
+    document.getElementById('input').focus();
+  }
+
+  // ── Send message ──────────────────────────────────────────
+  async function sendMessage() {
+    const input = document.getElementById('input');
+    const text  = input.value.trim();
+    if (!text || isLoading) return;
+
+    // Remove welcome screen
+    const welcome = document.getElementById('welcome');
+    if (welcome) welcome.remove();
+
+    // Hide error
+    document.getElementById('error-banner').classList.remove('show');
+
+    input.value = '';
+    isLoading   = true;
+    document.getElementById('send-btn').disabled = true;
+
+    // Add user message
+    addMessage('user', text);
+    msgCount++;
+    document.getElementById('msg-count').textContent = msgCount;
+
+    // Show typing
+    const typingId = addTyping();
+
+    try {
+      const res = await fetch(`${API_BASE}/chat`, {
+        method  : 'POST',
+        headers : { 'Content-Type': 'application/json' },
+        body    : JSON.stringify({ message: text }),
+        signal  : AbortSignal.timeout(15000)
+      });
+
+      removeTyping(typingId);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      addBotMessage(data.response, data.intent, data.confidence);
+      setStatus('online');
+
+    } catch (err) {
+      removeTyping(typingId);
+      document.getElementById('error-banner').classList.add('show');
+      addBotMessage(
+        'Backend is starting up. Please wait ~30 seconds and try again.',
+        'error', 0
+      );
+      setStatus('offline');
+    }
+
+    isLoading = false;
+    document.getElementById('send-btn').disabled = false;
+    input.focus();
+  }
+
+  // ── Add user message ──────────────────────────────────────
+  function addMessage(role, text) {
+    const msgs = document.getElementById('messages');
+    const div  = document.createElement('div');
+    div.className = `msg ${role}`;
+
+    const time = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+
+    div.innerHTML = `
+      <div class="msg-icon">${role === 'user' ? '👤' : '🤖'}</div>
+      <div class="msg-content">
+        <div class="msg-bubble">${escHtml(text)}</div>
+        <div class="msg-meta">${time}</div>
+      </div>
+    `;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  // ── Add bot message with intent tag ──────────────────────
+  function addBotMessage(text, intent, confidence) {
+    const msgs = document.getElementById('messages');
+    const div  = document.createElement('div');
+    div.className = 'msg bot';
+
+    const time    = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+    const confPct = Math.round(confidence * 100);
+
+    div.innerHTML = `
+      <div class="msg-icon">🤖</div>
+      <div class="msg-content">
+        <div class="msg-bubble">${escHtml(text)}</div>
+        <div class="msg-meta">
+          ${time}
+          ${intent && intent !== 'error'
+            ? `<span class="intent-tag">${intent}</span>
+               <span class="conf-tag">${confPct}%</span>`
+            : ''}
+        </div>
+      </div>
+    `;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  // ── Typing indicator ──────────────────────────────────────
+  function addTyping() {
+    const msgs = document.getElementById('messages');
+    const div  = document.createElement('div');
+    const id   = 'typing-' + Date.now();
+    div.id     = id;
+    div.className = 'msg bot typing';
+    div.innerHTML = `
+      <div class="msg-icon">🤖</div>
+      <div class="typing-dots">
+        <span></span><span></span><span></span>
+      </div>
+    `;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return id;
+  }
+
+  function removeTyping(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  }
+
+  // ── Escape HTML ───────────────────────────────────────────
+  function escHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Init ──────────────────────────────────────────────────
+  checkHealth();
+</script>
+</body>
+</html>
